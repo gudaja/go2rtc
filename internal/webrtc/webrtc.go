@@ -158,6 +158,8 @@ func asyncHandler(tr *ws.Transport, msg *ws.Message) (err error) {
 			case core.ModePassiveProducer:
 				stream.RemoveProducer(conn)
 			}
+			tr.Write(&ws.Message{Type: "webrtc/bye", Value: ""})
+			tr.Close()
 
 		case *pion.ICECandidate:
 			if !FilterCandidate(msg) {
