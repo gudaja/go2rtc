@@ -1,7 +1,6 @@
 package main
 
 import (
-	"github.com/AlexxIT/go2rtc/internal/alsa"
 	"github.com/AlexxIT/go2rtc/internal/api"
 	"github.com/AlexxIT/go2rtc/internal/api/ws"
 	"github.com/AlexxIT/go2rtc/internal/app"
@@ -35,7 +34,6 @@ import (
 	"github.com/AlexxIT/go2rtc/internal/srtp"
 	"github.com/AlexxIT/go2rtc/internal/streams"
 	"github.com/AlexxIT/go2rtc/internal/tapo"
-	"github.com/AlexxIT/go2rtc/internal/v4l2"
 	"github.com/AlexxIT/go2rtc/internal/webrtc"
 	"github.com/AlexxIT/go2rtc/internal/webtorrent"
 	"github.com/AlexxIT/go2rtc/internal/wyoming"
@@ -93,8 +91,8 @@ func main() {
 	expr.Init()     // expr source
 	gopro.Init()    // gopro source
 	doorbird.Init() // doorbird source
-	v4l2.Init()     // v4l2 source
-	alsa.Init()     // alsa source
+	// v4l2.Init()     // v4l2 source
+	// alsa.Init()     // alsa source
 	flussonic.Init()
 	eseecloud.Init()
 	yandex.Init()

@@ -96,7 +96,7 @@ func rtspHandler(rawURL string) (core.Producer, error) {
 	rawURL, rawQuery, _ := strings.Cut(rawURL, "#")
 
 	conn := rtsp.NewClient(rawURL)
-	conn.Backchannel = true
+	conn.Backchannel = false
 	conn.UserAgent = app.UserAgent
 
 	if rawQuery != "" {
