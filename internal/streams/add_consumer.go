@@ -17,7 +17,10 @@ func (s *Stream) AddConsumer(cons core.Consumer) (err error) {
 
 	// Step 1. Get consumer medias
 	consMedias := cons.GetMedias()
-	for _, consMedia := range consMedias {
+	// Track which consumer medias got matched
+	consMediaMatched := make([]bool, len(consMedias))
+
+	for consMediaIdx, consMedia := range consMedias {
 		log.Trace().Msgf("[streams] check cons=%d media=%s", consN, consMedia)
 
 	producers:
@@ -84,6 +87,8 @@ func (s *Stream) AddConsumer(cons core.Consumer) (err error) {
 					}
 				}
 
+				// Mark this consumer media as successfully matched
+				consMediaMatched[consMediaIdx] = true
 				prodStarts = append(prodStarts, prod)
 
 				if !consMedia.MatchAll() {
@@ -93,13 +98,27 @@ func (s *Stream) AddConsumer(cons core.Consumer) (err error) {
 		}
 	}
 
-	// stop producers if they don't have readers
-	if s.pending.Add(-1) == 0 {
-		s.stopProducers()
+	// check if ALL consumer medias were matched
+	allMatched := true
+	for consMediaIdx, consMedia := range consMedias {
+		if !consMediaMatched[consMediaIdx] {
+			log.Trace().Msgf("[streams] cons=%d media=%s not matched", consN, consMedia)
+			allMatched = false
+		}
 	}
 
-	if len(prodStarts) == 0 {
+	// if not all medias matched or no successful matches, return error
+	if !allMatched || len(prodStarts) == 0 {
+		// stop producers if they don't have readers
+		if s.pending.Add(-1) == 0 {
+			s.stopProducers()
+		}
 		return formatError(consMedias, prodMedias, prodErrors)
+	}
+
+	// stop producers if they don't have readers (after successful match)
+	if s.pending.Add(-1) == 0 {
+		s.stopProducers()
 	}
 
 	s.mu.Lock()
