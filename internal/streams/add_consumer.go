@@ -102,8 +102,24 @@ func (s *Stream) AddConsumer(cons core.Consumer) (err error) {
 	allMatched := true
 	for consMediaIdx, consMedia := range consMedias {
 		if !consMediaMatched[consMediaIdx] {
-			log.Trace().Msgf("[streams] cons=%d media=%s not matched", consN, consMedia)
-			allMatched = false
+			// Check if any producer has matching kind media
+			hasMatchingKind := false
+			expectedProdDir := core.DirectionRecvonly
+			if consMedia.Direction == core.DirectionRecvonly {
+				expectedProdDir = core.DirectionSendonly
+			}
+			for _, prodMedia := range prodMedias {
+				if prodMedia.Kind == consMedia.Kind && prodMedia.Direction == expectedProdDir {
+					hasMatchingKind = true
+					break
+				}
+			}
+			if hasMatchingKind {
+				// Producer has this media type but codecs didn't match - this is error
+				log.Trace().Msgf("[streams] cons=%d media=%s not matched", consN, consMedia)
+				allMatched = false
+			}
+			// else: Producer doesn't have this media type - it's optional, ignore
 		}
 	}
 
