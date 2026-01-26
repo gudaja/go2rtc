@@ -114,10 +114,15 @@ func (s *Stream) AddConsumer(cons core.Consumer) (err error) {
 					break
 				}
 			}
-			if hasMatchingKind {
-				// Producer has this media type but codecs didn't match - this is error
+			// Only treat as error if it's video that didn't match
+			// Audio is optional - if codecs don't match, we just skip it
+			if hasMatchingKind && consMedia.Kind == core.KindVideo {
+				// Producer has video but codecs didn't match - this is error
 				log.Trace().Msgf("[streams] cons=%d media=%s not matched", consN, consMedia)
 				allMatched = false
+			} else if hasMatchingKind {
+				// Audio didn't match - just log and continue without error
+				log.Debug().Msgf("[streams] cons=%d audio media=%s not matched, skipping audio", consN, consMedia)
 			}
 			// else: Producer doesn't have this media type - it's optional, ignore
 		}
