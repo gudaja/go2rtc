@@ -122,11 +122,25 @@ func Patch(name string, source string) *Stream {
 }
 
 func GetOrPatch(query url.Values) *Stream {
-	// check if src param exists
-	source := query.Get("src")
-	if source == "" {
+	sources := query["src"]
+	if len(sources) == 0 {
 		return nil
 	}
+
+	// multi-source: create stream with multiple producers
+	if len(sources) > 1 {
+		name := query.Get("name")
+		if name == "" {
+			name = sources[0]
+		}
+		if stream := Get(name); stream != nil {
+			return stream
+		}
+		log.Info().Msgf("[streams] create new multi-source stream name=%s sources=%d", name, len(sources))
+		return New(name, sources...)
+	}
+
+	source := sources[0]
 
 	// check if src is stream name
 	if stream := Get(source); stream != nil {
