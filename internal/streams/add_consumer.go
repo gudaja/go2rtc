@@ -17,7 +17,10 @@ func (s *Stream) AddConsumer(cons core.Consumer) (err error) {
 
 	// Step 1. Get consumer medias
 	consMedias := cons.GetMedias()
-	for _, consMedia := range consMedias {
+	// Track which consumer medias got matched
+	consMediaMatched := make([]bool, len(consMedias))
+
+	for consMediaIdx, consMedia := range consMedias {
 		log.Trace().Msgf("[streams] check cons=%d media=%s", consN, consMedia)
 
 	producers:
@@ -84,6 +87,7 @@ func (s *Stream) AddConsumer(cons core.Consumer) (err error) {
 					}
 				}
 
+				consMediaMatched[consMediaIdx] = true
 				prodStarts = append(prodStarts, prod)
 
 				if !consMedia.MatchAll() {
@@ -93,12 +97,24 @@ func (s *Stream) AddConsumer(cons core.Consumer) (err error) {
 		}
 	}
 
+	// Reject the consumer when the source has video but none of its codecs
+	// is supported by the consumer, ex. H265 camera => H264-only client.
+	// Without this the connection is set up with audio only and no error.
+	// Unmatched audio stays optional and is just skipped.
+	videoMissing := unmatchedVideo(consMedias, consMediaMatched, prodMedias)
+	if videoMissing && len(prodStarts) > 0 {
+		log.Debug().Msgf("[streams] cons=%d video codecs not matched", consN)
+		// release tracks already bound to producers (ex. audio),
+		// otherwise stopProducers below would keep them running
+		_ = cons.Stop()
+	}
+
 	// stop producers if they don't have readers
 	if s.pending.Add(-1) == 0 {
 		s.stopProducers()
 	}
 
-	if len(prodStarts) == 0 {
+	if videoMissing || len(prodStarts) == 0 {
 		return formatError(consMedias, prodMedias, prodErrors)
 	}
 
@@ -112,6 +128,28 @@ func (s *Stream) AddConsumer(cons core.Consumer) (err error) {
 	}
 
 	return nil
+}
+
+// unmatchedVideo returns true if some consumer video media was not matched
+// while a producer offers video in the matching direction.
+func unmatchedVideo(consMedias []*core.Media, matched []bool, prodMedias []*core.Media) bool {
+	for i, consMedia := range consMedias {
+		if matched[i] || consMedia.Kind != core.KindVideo {
+			continue
+		}
+
+		prodDirection := core.DirectionRecvonly
+		if consMedia.Direction == core.DirectionRecvonly {
+			prodDirection = core.DirectionSendonly
+		}
+
+		for _, prodMedia := range prodMedias {
+			if prodMedia.Kind == core.KindVideo && prodMedia.Direction == prodDirection {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func formatError(consMedias, prodMedias []*core.Media, prodErrors []error) error {
