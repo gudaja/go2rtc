@@ -10,6 +10,7 @@ import (
 	"github.com/AlexxIT/go2rtc/internal/app"
 	"github.com/AlexxIT/go2rtc/internal/streams"
 	"github.com/AlexxIT/go2rtc/pkg/core"
+	"github.com/AlexxIT/go2rtc/pkg/creds"
 	"github.com/AlexxIT/go2rtc/pkg/webrtc"
 	pion "github.com/pion/webrtc/v4"
 	"github.com/rs/zerolog"
@@ -167,6 +168,11 @@ func asyncHandler(tr *ws.Transport, msg *ws.Message) (err error) {
 	// protect from blocking on errors
 	defer sendAnswer.Done(nil)
 
+	// webrtc/bye waits for the handler, so it never overtakes the error
+	// or the answer (pion fires state changes from its own goroutine)
+	handled := make(chan struct{})
+	defer close(handled)
+
 	conn := webrtc.NewConn(pc)
 	conn.Mode = mode
 	conn.Protocol = "ws"
@@ -183,6 +189,7 @@ func asyncHandler(tr *ws.Transport, msg *ws.Message) (err error) {
 			case core.ModePassiveProducer:
 				stream.RemoveProducer(conn)
 			}
+			<-handled
 			tr.Write(&ws.Message{Type: "webrtc/bye", Value: ""})
 			tr.Close()
 
@@ -211,8 +218,11 @@ func asyncHandler(tr *ws.Transport, msg *ws.Message) (err error) {
 		// 2. AddConsumer, so we get new tracks
 		if err = stream.AddConsumer(conn); err != nil {
 			log.Debug().Err(err).Msg("[webrtc] add consumer")
+			// Send the error here, not from the ws handler after return,
+			// so it goes before webrtc/bye (ex. codecs not matched).
+			tr.Write(&ws.Message{Type: "error", Value: msg.Type + ": " + creds.SecretString(err.Error())})
 			_ = conn.Close()
-			return err
+			return nil
 		}
 	case core.ModePassiveProducer:
 		stream.AddProducer(conn)
