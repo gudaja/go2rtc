@@ -3,6 +3,8 @@ package streams
 import (
 	"errors"
 	"net/url"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -115,8 +117,27 @@ func Patch(name string, source string) (*Stream, error) {
 	return stream, nil
 }
 
+// querySources returns all sources from the query: repeated `src` params
+// and numbered `src2`, `src3`... (camera url, url2, url3), in this order.
+// Empty values are skipped, ex. `src3=` for a camera without url3.
+func querySources(query url.Values) (sources []string) {
+	add := func(values []string) {
+		for _, v := range values {
+			if v != "" {
+				sources = append(sources, v)
+			}
+		}
+	}
+
+	add(query["src"])
+	for i := 2; query.Has("src" + strconv.Itoa(i)); i++ {
+		add(query["src"+strconv.Itoa(i)])
+	}
+	return
+}
+
 func GetOrPatch(query url.Values) (*Stream, error) {
-	sources := query["src"]
+	sources := querySources(query)
 	if len(sources) == 0 {
 		return nil, errors.New("streams: source empty")
 	}
@@ -125,7 +146,9 @@ func GetOrPatch(query url.Values) (*Stream, error) {
 	if len(sources) > 1 {
 		name := query.Get("name")
 		if name == "" {
-			name = sources[0]
+			// name from all sources, so it doesn't collide with
+			// a single-source stream created from sources[0]
+			name = strings.Join(sources, " ")
 		}
 		if stream := Get(name); stream != nil {
 			return stream, nil

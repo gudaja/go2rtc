@@ -20,13 +20,16 @@ func (s *Stream) AddConsumer(cons core.Consumer) (err error) {
 	// Track which consumer medias got matched
 	consMediaMatched := make([]bool, len(consMedias))
 
+	order := s.producersOrder(cons, prodErrors)
+
 	for consMediaIdx, consMedia := range consMedias {
 		log.Trace().Msgf("[streams] check cons=%d media=%s", consN, consMedia)
 
 	producers:
-		for prodN, prod := range s.producers {
-			// check for loop request, ex. `camera1: ffmpeg:camera1`
-			if info, ok := cons.(core.Info); ok && prod.url == info.GetSource() {
+		for _, prodN := range order {
+			prod := s.producers[prodN]
+
+			if isLoop(cons, prod) {
 				log.Trace().Msgf("[streams] skip cons=%d prod=%d", consN, prodN)
 				continue
 			}
@@ -128,6 +131,54 @@ func (s *Stream) AddConsumer(cons core.Consumer) (err error) {
 	}
 
 	return nil
+}
+
+// isLoop checks for loop request, ex. `camera1: ffmpeg:camera1`
+func isLoop(cons core.Consumer, prod *Producer) bool {
+	info, ok := cons.(core.Info)
+	return ok && prod.url == info.GetSource()
+}
+
+// producersOrder returns the order in which producers are matched.
+// With several sources (ex. camera profiles: src, src2) the first one whose
+// video matches the consumer goes first, so audio is taken from the same
+// source too. Otherwise audio comes from the first source and the camera
+// is opened twice, and some cameras don't stream two RTSP sessions at once.
+func (s *Stream) producersOrder(cons core.Consumer, prodErrors []error) []int {
+	order := make([]int, len(s.producers))
+	for i := range order {
+		order[i] = i
+	}
+	if len(order) < 2 {
+		return order
+	}
+
+	for _, consMedia := range cons.GetMedias() {
+		if consMedia.Kind != core.KindVideo {
+			continue
+		}
+		for prodN, prod := range s.producers {
+			if isLoop(cons, prod) || prodErrors[prodN] != nil {
+				continue
+			}
+			if err := prod.Dial(); err != nil {
+				prodErrors[prodN] = err
+				continue
+			}
+			for _, prodMedia := range prod.GetMedias() {
+				if prodMedia.Kind != core.KindVideo {
+					continue
+				}
+				if prodCodec, _ := prodMedia.MatchMedia(consMedia); prodCodec != nil {
+					// move to front, keep the rest in order
+					copy(order[1:prodN+1], order[:prodN])
+					order[0] = prodN
+					return order
+				}
+			}
+		}
+	}
+	return order
 }
 
 // unmatchedVideo returns true if some consumer video media was not matched
