@@ -96,7 +96,10 @@ func rtspHandler(rawURL string) (core.Producer, error) {
 	rawURL, rawQuery, _ := strings.Cut(rawURL, "#")
 
 	conn := rtsp.NewClient(rawURL)
-	conn.Backchannel = true
+	// Backchannel only on request (#backchannel=1). Some cameras (ex. icamra
+	// without mic) list the backchannel track after `Require: backchannel`
+	// and then never answer PLAY, so the video is frozen.
+	conn.Backchannel = false
 	conn.UserAgent = app.UserAgent
 
 	if rawQuery != "" {
